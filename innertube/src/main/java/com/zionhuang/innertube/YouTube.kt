@@ -13,6 +13,7 @@ import com.zionhuang.innertube.models.SongItem
 import com.zionhuang.innertube.models.WatchEndpoint
 import com.zionhuang.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
 import com.zionhuang.innertube.models.YouTubeClient.Companion.ANDROID_MUSIC
+import com.zionhuang.innertube.models.YouTubeClient.Companion.IOS
 import com.zionhuang.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.zionhuang.innertube.models.YouTubeClient.Companion.WEB
 import com.zionhuang.innertube.models.YouTubeClient.Companion.WEB_REMIX
@@ -81,6 +82,11 @@ object YouTube {
         get() = innerTube.proxy
         set(value) {
             innerTube.proxy = value
+        }
+    var useLoginForBrowse: Boolean
+        get() = innerTube.useLoginForBrowse
+        set(value) {
+            innerTube.useLoginForBrowse = value
         }
 
     suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatching {
@@ -194,7 +200,6 @@ object YouTube {
             response = innerTube.browse(
                 client = WEB_REMIX,
                 continuation = continuation,
-                setLogin = true
             ).body<BrowseResponse>()
             songs += response.continuationContents?.musicPlaylistShelfContinuation?.contents?.mapNotNull {
                 AlbumPage.fromMusicResponsiveListItemRenderer(it.musicResponsiveListItemRenderer)
@@ -413,7 +418,14 @@ object YouTube {
     }
 
     suspend fun player(videoId: String, playlistId: String? = null): Result<PlayerResponse> = runCatching {
-        val playerResponse = innerTube.player(ANDROID_MUSIC, videoId, playlistId).body<PlayerResponse>()
+        var playerResponse: PlayerResponse
+        if (this.cookie != null) { // if logged in: try ANDROID_MUSIC client first because IOS client does not play age restricted songs
+            playerResponse = innerTube.player(ANDROID_MUSIC, videoId, playlistId).body<PlayerResponse>()
+            if (playerResponse.playabilityStatus.status == "OK") {
+                return@runCatching playerResponse
+            }
+        }
+        playerResponse = innerTube.player(IOS, videoId, playlistId).body<PlayerResponse>()
         if (playerResponse.playabilityStatus.status == "OK") {
             return@runCatching playerResponse
         }
